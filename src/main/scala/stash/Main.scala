@@ -1,4 +1,4 @@
-package stash4s
+package stash
 
 object Main extends App {
   println("hello world")
