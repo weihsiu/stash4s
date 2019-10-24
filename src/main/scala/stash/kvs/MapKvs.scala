@@ -9,7 +9,7 @@ import scodec.bits.ByteVector
 case class MapKvs[F[_]](kvs: Ref[F, Map[ByteVector, ByteVector]])
 
 object MapKvs {
-  implicit def mapKvs[F[_] : Functor : Sync]: Kvs[F, MapKvs[F]] = new Kvs[F, MapKvs[F]] {
+  implicit def mapKvs[F[_] : Sync]: Kvs[F, MapKvs[F]] = new Kvs[F, MapKvs[F]] {
     def insert(x: MapKvs[F], key: ByteVector, value: ByteVector): F[Unit] =
       x.kvs.update(_ + (key -> value))
     def query(x: MapKvs[F], key: ByteVector): F[Option[ByteVector]] =
