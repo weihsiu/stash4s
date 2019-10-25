@@ -13,14 +13,14 @@ import stash.kvs.MapKvs
 
 object MapKvsSpecification extends Properties("MapKvs") {
   import Prop.forAll
-  implicit val F = Sync[IO]
   property("insert/query/remove") = forAll { (k: ByteVector, v: ByteVector) =>
     val test = for {
-      kvs <- Ref.of(Map.empty[ByteVector, ByteVector])
-      mapKvs = MapKvs(kvs)
+      mapKvs <- Ref.of[IO, Map[ByteVector, ByteVector]](Map.empty).map(MapKvs(_))
       _ <- mapKvs.insert(k, v)
-      r <- mapKvs.query(k)
-    } yield r == v
+      r1 <- mapKvs.query(k)
+      _ <- mapKvs.remove(k)
+      r2 <- mapKvs.query(k)
+    } yield r1 == Some(v) && r2 == None
     test.unsafeRunSync()
   }
 }
