@@ -24,9 +24,7 @@ object FileKvsSpecification extends Properties("FileKvs") {
       inputs <- Pool.of[IO, RandomAccessFile](List.fill(3)(new RandomAccessFile("data/test", "r")))
       fileKvs = FileKvs(offsets, output, inputs)
       _ <- fileKvs.insert(k, v)
-      _ = println("inserted")
       r1 <- fileKvs.query(k)
-      _ = println(s"r1 = $r1")
       _ <- fileKvs.remove(k)
       r2 <- fileKvs.query(k)
     } yield r1 == Some(v) && r2 == None

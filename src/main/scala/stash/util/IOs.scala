@@ -83,10 +83,8 @@ object IOs {
       bs: ByteVector
   )(implicit CW: CanWrite[F, A]): F[Int] =
     for {
-      _ <- block(
-        CW.writeBytes(x, int32.encode(bs.length.toInt).require.toByteVector)
-      )
-      _ <- block(CW.writeBytes(x, bs))
+      _ <- CW.writeBytes(x, int32.encode(bs.length.toInt).require.toByteVector)
+      _ <- CW.writeBytes(x, bs)
     } yield 4 + bs.length.toInt
   def flush[F[_]: ContextShift: Sync, A](x: A)(implicit CW: CanWrite[F, A]): F[Unit] = CW.flush(x)
   def seek[F[_]: ContextShift: Sync, A](x: A, to: Long)(implicit CS: CanSeek[F, A]): F[Unit] =
