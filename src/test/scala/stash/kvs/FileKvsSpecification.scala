@@ -20,12 +20,13 @@ object FileKvsSpecification extends Properties("FileKvs") {
     v.nonEmpty ==> {
       implicit val cs = IO.contextShift(global)
       val test = for {
-        offsets <- Ref.of[IO, Map[ByteVector, Long]](Map.empty)
-        output  <- MVar.of[IO, (Long, OutputStream)]((0, new FileOutputStream("data/test")))
-        inputs <- Pool.of[IO, RandomAccessFile](
-          List.fill(3)(new RandomAccessFile("data/test", "r"))
-        )
-        fileKvs = FileKvs(offsets, output, inputs)
+        fileKvs <- (
+          Ref.of[IO, Map[ByteVector, Long]](Map.empty),
+          MVar.of[IO, (Long, OutputStream)]((0, new FileOutputStream("data/test"))),
+          Pool.of[IO, RandomAccessFile](
+            List.fill(3)(new RandomAccessFile("data/test", "r"))
+          )
+        ).mapN(FileKvs[IO])
         _  <- fileKvs.insert(k, v)
         r1 <- fileKvs.query(k)
         _  <- fileKvs.remove(k)
