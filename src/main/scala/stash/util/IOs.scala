@@ -11,7 +11,7 @@ import scodec.bits.ByteVector
 import stash.util.Effects._
 
 object IOs {
-  trait CanRead[F[_], A] {
+  trait CanRead[F[_], -A] {
     def readByte(x: A): F[Option[Byte]]
     def readBytes(x: A, n: Int): F[ByteVector]
   }
@@ -47,7 +47,8 @@ object IOs {
         ByteVector(bs)
       }
     }
-  trait CanWrite[F[_], A] {
+
+  trait CanWrite[F[_], -A] {
     def writeBytes(x: A, bs: ByteVector): F[Unit]
     def flush(x: A): F[Unit]
   }
@@ -60,15 +61,25 @@ object IOs {
     new CanWrite[F, RandomAccessFile] {
       def writeBytes(x: RandomAccessFile, bs: ByteVector) =
         block(x.write(bs.toArray))
-      def flush(x: RandomAccessFile) = Applicative[F].pure(())
+      def flush(x: RandomAccessFile) = Applicative[F].unit
     }
-  trait CanSeek[F[_], A] {
+
+  trait CanSeek[F[_], -A] {
     def seek(x: A, to: Long): F[Unit]
   }
   implicit def randomAccessFileCanSeek[F[_]: ContextShift: Sync]: CanSeek[F, RandomAccessFile] =
     new CanSeek[F, RandomAccessFile] {
       def seek(x: RandomAccessFile, to: Long) = block(x.seek(to))
     }
+
+  trait CanClose[F[_], -A] {
+    def close(x: A): F[Unit]
+  }
+  implicit def closeableCanClose[F[_]: ContextShift: Sync]: CanClose[F, Closeable] =
+    new CanClose[F, Closeable] {
+      def close(x: Closeable) = block(x.close())
+    }
+
   def readLengthBytes[F[_]: ContextShift: FlatMap: LiftIO: Sync, A](
       x: A
   )(implicit CR: CanRead[F, A]): F[ByteVector] =
@@ -89,4 +100,5 @@ object IOs {
   def flush[F[_]: ContextShift: Sync, A](x: A)(implicit CW: CanWrite[F, A]): F[Unit] = CW.flush(x)
   def seek[F[_]: ContextShift: Sync, A](x: A, to: Long)(implicit CS: CanSeek[F, A]): F[Unit] =
     CS.seek(x, to)
+  def close[F[_]: ContextShift: Sync, A](x: A)(implicit CC: CanClose[F, A]): F[Unit] = CC.close(x)
 }

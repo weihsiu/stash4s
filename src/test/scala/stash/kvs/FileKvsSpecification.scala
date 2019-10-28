@@ -19,13 +19,17 @@ object FileKvsSpecification extends Properties("FileKvs") {
   property("insert/query/remove") = forAll { (k: ByteVector, v: ByteVector) =>
     v.nonEmpty ==> {
       implicit val cs = IO.contextShift(global)
-      val test = for {
-        fileKvs <- FileKvs.initFileKvs[IO]("data/test")
-        _  <- fileKvs.insert(k, v)
-        r1 <- fileKvs.query(k)
-        _  <- fileKvs.remove(k)
-        r2 <- fileKvs.query(k)
-      } yield r1 == Some(v) && r2 == None
+      val test = Resource
+        .make(FileKvs.initFileKvs[IO]("data/test.kvs", 3))(FileKvs.releaseFileKvs(_))
+        .use(
+          fileKvs =>
+            for {
+              _  <- fileKvs.insert(k, v)
+              r1 <- fileKvs.query(k)
+              _  <- fileKvs.remove(k)
+              r2 <- fileKvs.query(k)
+            } yield r1 == Some(v) && r2 == None
+        )
       test.unsafeRunSync()
     }
   }

@@ -21,7 +21,8 @@ case class FileKvs[F[_]](
 
 object FileKvs {
   def initFileKvs[F[_]: Concurrent: ContextShift](
-      file: String
+      file: String,
+      readers: Int
   ): F[FileKvs[F]] = {
     def buildOffsets(
         input: InputStream,
@@ -44,9 +45,7 @@ object FileKvs {
         Files.size(path)
       }
       offsets <- Resource
-        .make(Effects.block((new BufferedInputStream(new FileInputStream(file)))))(
-          input => Effects.block(input.close())
-        )
+        .make(Effects.block(new BufferedInputStream(new FileInputStream(file))))(IOs.close(_))
         .use(input => buildOffsets(input, size, Map.empty, 0))
       fileKvs <- (
         Ref.of[F, Map[ByteVector, Long]](offsets),
@@ -54,11 +53,16 @@ object FileKvs {
           (size, new BufferedOutputStream(new FileOutputStream(file, true)))
         ),
         Pool.of[F, RandomAccessFile](
-          List.fill(3)(new RandomAccessFile(file, "r"))
+          List.fill(readers)(new RandomAccessFile(file, "r"))
         )
       ).mapN(FileKvs[F])
     } yield fileKvs
   }
+  def releaseFileKvs[F[_]: ContextShift: FlatMap: Sync](fileKvs: FileKvs[F]): F[Unit] = for {
+    (_, os) <- fileKvs.output.take
+    _ <- IOs.close(os)
+    _ <- fileKvs.inputs.release(IOs.close(_))
+  } yield ()
   implicit def fileKvs[F[_]: ContextShift: FlatMap: LiftIO: Sync]: Kvs[F, FileKvs[F]] =
     new Kvs[F, FileKvs[F]] {
       def insert(x: FileKvs[F], key: ByteVector, value: ByteVector): F[Unit] = {
