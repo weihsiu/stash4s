@@ -6,6 +6,8 @@ import cats.effect._
 import cats.effect.concurrent._
 import cats.implicits._
 import java.io._
+import java.nio.file._
+import scala.concurrent.ExecutionContext
 import scodec._
 import scodec.bits.ByteVector
 import stash.kvs.Kvs._
@@ -18,6 +20,45 @@ case class FileKvs[F[_]](
 )
 
 object FileKvs {
+  def initFileKvs[F[_]: Concurrent: ContextShift](
+      file: String
+  ): F[FileKvs[F]] = {
+    def buildOffsets(
+        input: InputStream,
+        size: Long,
+        offsets: Map[ByteVector, Long],
+        offset: Long
+    ): F[Map[ByteVector, Long]] =
+      for {
+        k <- IOs.readLengthBytes(input)
+        v <- IOs.readLengthBytes(input)
+        offsets2 = if (v.isEmpty) offsets - k else offsets + (k -> (offset + 4 + k.length))
+        offset2  = offset + 8 + k.length + v.length
+        offsets3 <- if (offset2 >= size) Applicative[F].pure(offsets2)
+        else buildOffsets(input, size, offsets2, offset2)
+      } yield offsets3
+    for {
+      size <- Effects.block {
+        val path = Paths.get(file)
+        if (!Files.exists(path)) Files.createFile(path)
+        Files.size(path)
+      }
+      offsets <- Resource
+        .make(Effects.block((new BufferedInputStream(new FileInputStream(file)))))(
+          input => Effects.block(input.close())
+        )
+        .use(input => buildOffsets(input, size, Map.empty, 0))
+      fileKvs <- (
+        Ref.of[F, Map[ByteVector, Long]](offsets),
+        MVar.of[F, (Long, OutputStream)](
+          (size, new BufferedOutputStream(new FileOutputStream(file, true)))
+        ),
+        Pool.of[F, RandomAccessFile](
+          List.fill(3)(new RandomAccessFile(file, "r"))
+        )
+      ).mapN(FileKvs[F])
+    } yield fileKvs
+  }
   implicit def fileKvs[F[_]: ContextShift: FlatMap: LiftIO: Sync]: Kvs[F, FileKvs[F]] =
     new Kvs[F, FileKvs[F]] {
       def insert(x: FileKvs[F], key: ByteVector, value: ByteVector): F[Unit] = {
