@@ -39,17 +39,14 @@ object FileKvs {
         offsets: Map[ByteVector, Long],
         offset: Long
     ): F[Map[ByteVector, Long]] =
-      Blocker[F].use(
-        b =>
-          for {
-            k <- IOs.readLengthBytes(input, blocker)
-            v <- IOs.readLengthBytes(input, blocker)
-            offsets2 = if (v.isEmpty) offsets - k else offsets + (k -> (offset + 4 + k.length))
-            offset2  = offset + 8 + k.length + v.length
-            offsets3 <- if (offset2 >= size) Applicative[F].pure(offsets2)
-            else buildOffsets(input, size, offsets2, offset2)
-          } yield offsets3
-      )
+      for {
+        k <- IOs.readLengthBytes(input, blocker)
+        v <- IOs.readLengthBytes(input, blocker)
+        offsets2 = if (v.isEmpty) offsets - k else offsets + (k -> (offset + 4 + k.length))
+        offset2  = offset + 8 + k.length + v.length
+        offsets3 <- if (offset2 >= size) Applicative[F].pure(offsets2)
+        else buildOffsets(input, size, offsets2, offset2)
+      } yield offsets3
     for {
       size <- blocker.delay {
         if (!Files.exists(file)) Files.createFile(file)
