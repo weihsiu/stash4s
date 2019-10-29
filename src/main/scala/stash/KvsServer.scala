@@ -14,10 +14,14 @@ trait KvsServer[F[_]] {
 }
 
 object KvsServer {
-  implicit def kvsServer[F[_]: ContextShift: Sync, E](implicit AA: ApplicativeAsk[F, E], HFK: HasFileKvs[F, E]): KvsServer[F] = new KvsServer[F] {
-    def start(interface: String, port: Int) = for {
-      fileKvs <- AA.ask.map(HFK.fileKvs.get)
-      
-    } yield ???
+  implicit def kvsServer[F[_]: ContextShift: Sync, E](
+      implicit AA: ApplicativeAsk[F, E],
+      HFK: HasFileKvs[F, E]
+  ): KvsServer[F] = new KvsServer[F] {
+    def start(interface: String, port: Int) =
+      for {
+        fileKvs <- AA.ask.map(HFK.fileKvsL.get)
+
+      } yield ???
   }
 }

@@ -6,7 +6,8 @@ scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
   "-language:implicitConversions",
-  "-Ymacro-annotations"
+  "-Ymacro-annotations",
+  "-Ywarn-unused"
 )
 
 libraryDependencies ++= Seq(
