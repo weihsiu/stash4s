@@ -12,6 +12,7 @@ import scodec._
 import scodec.bits.ByteVector
 import stash.kvs.Kvs._
 import stash.util._
+import monocle.Lens
 
 case class FileKvs[F[_]](
     offsets: Ref[F, Map[ByteVector, Long]],
@@ -19,9 +20,13 @@ case class FileKvs[F[_]](
     inputs: Pool[F, RandomAccessFile]
 )
 
+trait HasFileKvs[F[_], A] {
+  def fileKvs: Lens[A, FileKvs[F]]
+}
+
 object FileKvs {
   def initFileKvs[F[_]: Concurrent: ContextShift](
-      file: String,
+      file: Path,
       readers: Int
   ): F[FileKvs[F]] = {
     def buildOffsets(
@@ -40,30 +45,30 @@ object FileKvs {
       } yield offsets3
     for {
       size <- Effects.block {
-        val path = Paths.get(file)
-        if (!Files.exists(path)) Files.createFile(path)
-        Files.size(path)
+        if (!Files.exists(file)) Files.createFile(file)
+        Files.size(file)
       }
       offsets <- Resource
-        .make(Effects.block(new BufferedInputStream(new FileInputStream(file))))(IOs.close(_))
+        .make(Effects.block(new BufferedInputStream(new FileInputStream(file.toFile))))(IOs.close(_))
         .use(input => buildOffsets(input, size, Map.empty, 0))
       fileKvs <- (
         Ref.of[F, Map[ByteVector, Long]](offsets),
         MVar.of[F, (Long, OutputStream)](
-          (size, new BufferedOutputStream(new FileOutputStream(file, true)))
+          (size, new BufferedOutputStream(new FileOutputStream(file.toFile, true)))
         ),
         Pool.of[F, RandomAccessFile](
-          List.fill(readers)(new RandomAccessFile(file, "r"))
+          List.fill(readers)(new RandomAccessFile(file.toFile, "r"))
         )
       ).mapN(FileKvs[F])
     } yield fileKvs
   }
-  def releaseFileKvs[F[_]: ContextShift: FlatMap: Sync](fileKvs: FileKvs[F]): F[Unit] = for {
-    (_, os) <- fileKvs.output.take
+  def releaseFileKvs[F[_]: ContextShift: Sync](fileKvs: FileKvs[F]): F[Unit] = for {
+    (o, os) <- fileKvs.output.take
     _ <- IOs.close(os)
+    _ <- fileKvs.output.put((o, os))
     _ <- fileKvs.inputs.release(IOs.close(_))
   } yield ()
-  implicit def fileKvs[F[_]: ContextShift: FlatMap: LiftIO: Sync]: Kvs[F, FileKvs[F]] =
+  implicit def fileKvs[F[_]: ContextShift: LiftIO: Sync]: Kvs[F, FileKvs[F]] =
     new Kvs[F, FileKvs[F]] {
       def insert(x: FileKvs[F], key: ByteVector, value: ByteVector): F[Unit] = {
         assert(value.nonEmpty)
@@ -101,7 +106,7 @@ object FileKvs {
           _       <- x.output.put((o + n + m, os))
         } yield ()
     }
-  implicit def fileKvsOps[F[_]: ContextShift: FlatMap: LiftIO: Sync](
+  implicit def fileKvsOps[F[_]: ContextShift: LiftIO: Sync](
       fileKvs: FileKvs[F]
   ): KvsOps[F, FileKvs[F]] =
     new KvsOps(fileKvs)
