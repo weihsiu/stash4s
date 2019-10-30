@@ -7,21 +7,27 @@ import cats.effect.implicits._
 import cats.implicits._
 import cats.mtl._
 import cats.mtl.implicits._
+import fs2._
+import fs2.io.tcp._
 import stash.kvs._
+import stash.util._
+import java.net.InetSocketAddress
 
 trait KvsServer[F[_]] {
-  def start(interface: String, port: Int): F[Unit]
+  def serve(interface: String, port: Int): F[Unit]
 }
 
 object KvsServer {
-  implicit def kvsServer[F[_]: ContextShift: Sync, E](
+  implicit def kvsServer[F[_]: Concurrent: ContextShift: Sync, E](
       implicit AA: ApplicativeAsk[F, E],
       HFK: HasFileKvs[F, E]
   ): KvsServer[F] = new KvsServer[F] {
-    def start(interface: String, port: Int) =
+    def serve(interface: String, port: Int) =
       for {
         fileKvs <- AA.ask.map(HFK.fileKvsL.get)
-
-      } yield ???
+        _ <- (Networks.makeSocketGroup >>= Networks
+          .serve(new InetSocketAddress(interface, port), process(fileKvs))).compile.drain
+      } yield ()
+    def process(fileKvs: FileKvs[F])(socket: Socket[F]): Stream[F, Unit] = ???
   }
 }
