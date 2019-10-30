@@ -40,8 +40,8 @@ object FileKvs {
         offset: Long
     ): F[Map[ByteVector, Long]] =
       for {
-        k <- IOs.readLengthBytes(input, blocker)
-        v <- IOs.readLengthBytes(input, blocker)
+        k <- IOs.syncReadLengthBytes(input, blocker)
+        v <- IOs.syncReadLengthBytes(input, blocker)
         offsets2 = if (v.isEmpty) offsets - k else offsets + (k -> (offset + 4 + k.length))
         offset2  = offset + 8 + k.length + v.length
         offsets3 <- if (offset2 >= size) Applicative[F].pure(offsets2)
@@ -54,7 +54,7 @@ object FileKvs {
       }
       offsets <- Resource
         .make(blocker.delay(new BufferedInputStream(new FileInputStream(file.toFile))))(
-          IOs.close(_, blocker)
+          IOs.syncClose(_, blocker)
         )
         .use(input => buildOffsets(input, size, Map.empty, 0))
       fileKvs <- (
@@ -72,9 +72,9 @@ object FileKvs {
   def releaseFileKvs[F[_]: ContextShift: Sync](fileKvs: FileKvs[F]): F[Unit] =
     for {
       (o, os) <- fileKvs.output.take
-      _       <- IOs.close(os, fileKvs.blocker)
+      _       <- IOs.syncClose(os, fileKvs.blocker)
       _       <- fileKvs.output.put((o, os))
-      _       <- fileKvs.inputs.release(IOs.close(_, fileKvs.blocker))
+      _       <- fileKvs.inputs.release(IOs.syncClose(_, fileKvs.blocker))
     } yield ()
   implicit def fileKvs[F[_]: ContextShift: LiftIO: Sync]: Kvs[F, FileKvs[F]] =
     new Kvs[F, FileKvs[F]] {
@@ -82,9 +82,9 @@ object FileKvs {
         assert(value.nonEmpty)
         for {
           (o, os) <- x.output.take
-          n       <- IOs.writeLengthBytes(os, x.blocker, key)
-          m       <- IOs.writeLengthBytes(os, x.blocker, value)
-          _       <- IOs.flush(os, x.blocker)
+          n       <- IOs.syncWriteLengthBytes(os, x.blocker, key)
+          m       <- IOs.syncWriteLengthBytes(os, x.blocker, value)
+          _       <- IOs.syncFlush(os, x.blocker)
           _       <- x.offsets.update(_ + (key -> (o + n)))
           _       <- x.output.put((o + n + m, os))
         } yield ()
@@ -98,8 +98,8 @@ object FileKvs {
               .use(
                 raf =>
                   for {
-                    _  <- IOs.seek(raf, x.blocker, o)
-                    bs <- IOs.readLengthBytes(raf, x.blocker)
+                    _  <- IOs.syncSeek(raf, x.blocker, o)
+                    bs <- IOs.syncReadLengthBytes(raf, x.blocker)
                   } yield bs
               )
           )
@@ -107,9 +107,9 @@ object FileKvs {
       def remove(x: FileKvs[F], key: ByteVector): F[Unit] =
         for {
           (o, os) <- x.output.take
-          n       <- IOs.writeLengthBytes(os, x.blocker, key)
-          m       <- IOs.writeLengthBytes(os, x.blocker, ByteVector.empty)
-          _       <- IOs.flush(os, x.blocker)
+          n       <- IOs.syncWriteLengthBytes(os, x.blocker, key)
+          m       <- IOs.syncWriteLengthBytes(os, x.blocker, ByteVector.empty)
+          _       <- IOs.syncFlush(os, x.blocker)
           _       <- x.offsets.update(_ - key)
           _       <- x.output.put((o + n + m, os))
         } yield ()
