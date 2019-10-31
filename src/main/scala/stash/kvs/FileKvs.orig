@@ -76,27 +76,25 @@ object FileKvs {
       _       <- fileKvs.output.put((o, os))
       _       <- fileKvs.inputs.release(IOs.syncClose(_, fileKvs.blocker))
     } yield ()
-  implicit def fileKvs[F[_]: ContextShift: LiftIO: Sync, G[_]: Monad](
-      implicit G2F: G ~> F
-  ): Kvs[F, FileKvs[G]] =
-    new Kvs[F, FileKvs[G]] {
-      def insert(x: FileKvs[G], key: ByteVector, value: ByteVector): F[Unit] = {
+  implicit def fileKvs[F[_]: ContextShift: LiftIO: Sync]: Kvs[F, FileKvs[F]] =
+    new Kvs[F, FileKvs[F]] {
+      def insert(x: FileKvs[F], key: ByteVector, value: ByteVector): F[Unit] = {
         assert(value.nonEmpty)
         for {
-          (o, os) <- G2F(x.output.take)
+          (o, os) <- x.output.take
           n       <- IOs.syncWriteLengthBytes(os, x.blocker, key)
           m       <- IOs.syncWriteLengthBytes(os, x.blocker, value)
           _       <- IOs.syncFlush(os, x.blocker)
-          _       <- G2F(x.offsets.update(_ + (key -> (o + n))))
-          _       <- G2F(x.output.put((o + n + m, os)))
+          _       <- x.offsets.update(_ + (key -> (o + n)))
+          _       <- x.output.put((o + n + m, os))
         } yield ()
       }
-      def query(x: FileKvs[G], key: ByteVector): F[Option[ByteVector]] =
+      def query(x: FileKvs[F], key: ByteVector): F[Option[ByteVector]] =
         (for {
-          o <- new OptionT(G2F(x.offsets.get.map(_.get(key))))
+          o <- new OptionT(x.offsets.get.map(_.get(key)))
           bs <- OptionT.liftF(
             Resource
-              .make(G2F(x.inputs.take))(input => G2F(x.inputs.put(input)))
+              .make(x.inputs.take)(x.inputs.put)
               .use(
                 raf =>
                   for {
@@ -106,18 +104,18 @@ object FileKvs {
               )
           )
         } yield bs).value
-      def remove(x: FileKvs[G], key: ByteVector): F[Unit] =
+      def remove(x: FileKvs[F], key: ByteVector): F[Unit] =
         for {
-          (o, os) <- G2F(x.output.take)
+          (o, os) <- x.output.take
           n       <- IOs.syncWriteLengthBytes(os, x.blocker, key)
           m       <- IOs.syncWriteLengthBytes(os, x.blocker, ByteVector.empty)
           _       <- IOs.syncFlush(os, x.blocker)
-          _       <- G2F(x.offsets.update(_ - key))
-          _       <- G2F(x.output.put((o + n + m, os)))
+          _       <- x.offsets.update(_ - key)
+          _       <- x.output.put((o + n + m, os))
         } yield ()
     }
-  implicit def fileKvsOps[F[_]: ContextShift: LiftIO: Sync, G[_]: Monad](
-      fileKvs: FileKvs[G]
-  )(implicit G2F: G ~> F): KvsOps[F, FileKvs[G]] =
+  implicit def fileKvsOps[F[_]: ContextShift: LiftIO: Sync](
+      fileKvs: FileKvs[F]
+  ): KvsOps[F, FileKvs[F]] =
     new KvsOps(fileKvs)
 }

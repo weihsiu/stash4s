@@ -18,17 +18,18 @@ trait KvsServer[F[_]] {
 }
 
 object KvsServer {
-  implicit def kvsServer[F[_]: Concurrent: ContextShift: Sync, E](
-      implicit AA: ApplicativeAsk[F, E],
-      HFK: HasFileKvs[F, E]
+  implicit def kvsServer[F[_]: Concurrent: ContextShift: Sync, G[_]: Monad, E](
+      implicit AA: ApplicativeAsk[G, E],
+      G2F: G ~> F, 
+      HFK: HasFileKvs[G, E]
   ): KvsServer[F] = new KvsServer[F] {
     def serve(interface: String, port: Int) =
       for {
-        fileKvs <- AA.ask.map(HFK.fileKvsL.get)
+        fileKvs <- G2F(AA.ask.map(HFK.fileKvsL.get))
         _ <- (Networks.makeSocketGroup >>= Networks
           .serve(new InetSocketAddress(interface, port), process(fileKvs))).compile.drain
       } yield ()
-    def process(fileKvs: FileKvs[F])(socket: Socket[F]): Stream[F, Unit] =
+    def process(fileKvs: FileKvs[G])(socket: Socket[F]): Stream[F, Unit] =
       socket.reads(1024).through(socket.writes()).onFinalize(socket.endOfOutput)
   }
 }
