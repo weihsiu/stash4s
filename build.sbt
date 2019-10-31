@@ -14,6 +14,8 @@ libraryDependencies ++= Seq(
   "org.typelevel" %% "cats-core" % "2.0.0",
   "org.typelevel" %% "cats-effect" % "2.0.0",
   "org.typelevel" %% "cats-mtl-core" % "0.7.0",
+  "com.olegpy" %% "meow-mtl-core" % "0.4.0",
+  "com.olegpy" %% "meow-mtl-effects" % "0.4.0",
   "co.fs2" %% "fs2-core" % "2.0.1",
   "co.fs2" %% "fs2-io" % "2.0.1",
   "org.scodec" %% "scodec-core" % "1.11.4",
