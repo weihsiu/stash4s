@@ -28,6 +28,7 @@ object KvsServer {
         _ <- (Networks.makeSocketGroup >>= Networks
           .serve(new InetSocketAddress(interface, port), process(fileKvs))).compile.drain
       } yield ()
-    def process(fileKvs: FileKvs[F])(socket: Socket[F]): Stream[F, Unit] = ???
+    def process(fileKvs: FileKvs[F])(socket: Socket[F]): Stream[F, Unit] =
+      socket.reads(1024).through(socket.writes()).onFinalize(socket.endOfOutput)
   }
 }
