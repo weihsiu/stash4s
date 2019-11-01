@@ -9,7 +9,6 @@ import cats.implicits._
 import cats.mtl._
 import cats.mtl.instances.all._
 import com.olegpy.meow.effects._
-// import com.olegpy.meow.hierarchy._
 import java.nio.file.Paths
 import stash.KvsServer._
 import stash.Env._
