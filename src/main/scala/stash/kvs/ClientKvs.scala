@@ -5,6 +5,7 @@ import fs2._
 import fs2.io.tcp._
 import monocle._
 import scodec.bits.ByteVector
+import stash.util.Networks._
 
 case class ClientKvs[F[_]](socket: Deferred[F, Socket[F]])
 
@@ -15,7 +16,7 @@ trait HasClientKvs[F[_], A] {
 object ClientKvs {
   def initClientKvs[F[_]](host: String, port: Int): F[ClientKvs[F]] = ???
   implicit def clientKvs[F[_], G[_]]: Kvs[F, ClientKvs[G]] = new Kvs[F, ClientKvs[G]] {
-
+    
     def insert(x: ClientKvs[G], key: ByteVector, value: ByteVector): F[Unit] = ???
     def query(x: ClientKvs[G], key: ByteVector): F[Option[ByteVector]] = ???
     def remove(x: ClientKvs[G], key: ByteVector): F[Unit] = ???
