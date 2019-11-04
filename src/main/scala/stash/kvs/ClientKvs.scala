@@ -11,6 +11,7 @@ import monocle._
 import scodec.bits.ByteVector
 import scodec.codecs._
 import scodec.stream._
+import stash.kvs.Kvs._
 import stash.Protocols._
 import stash.util.Networks
 
@@ -55,7 +56,6 @@ object ClientKvs {
         Resource.make(x.channels.take)(x.channels.put).use {
           case (rqs, rps) =>
             for {
-              _  <- rqs.put(Insert(key, value))
               rp <- rps.take
               _ = assert(rp == NoneSuccess)
             } yield ()
@@ -81,4 +81,8 @@ object ClientKvs {
             } yield ()
         }
     }
+  implicit def clientKvsOps[F[_]: Bracket[*[_], Throwable]: FlatMap](
+      clientKvs: ClientKvs[F]
+  ): KvsOps[F, ClientKvs[F]] =
+    new KvsOps(clientKvs)
 }

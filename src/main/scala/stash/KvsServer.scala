@@ -21,7 +21,7 @@ trait KvsServer[F[_]] {
 }
 
 object KvsServer {
-  def kvsServer[F[_]: Concurrent: ContextShift: Sync, G[_]: Monad, E](
+  def kvsServer[F[_]: Concurrent: ContextShift, G[_]: Monad, E](
       implicit AA: ApplicativeAsk[G, E],
       G2F: G ~> F,
       HFK: HasFileKvs[G, E]
