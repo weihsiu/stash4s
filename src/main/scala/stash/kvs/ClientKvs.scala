@@ -15,71 +15,66 @@ import stash.kvs.Kvs._
 import stash.Protocols._
 import stash.util.Networks
 
-case class ClientKvs[F[_]](channels: ClientKvs.Channels[F])
+case class ClientKvs[F[_]](request: MVar[F, Request], response: MVar[F, Response])
 
 trait HasClientKvs[F[_], A] {
   def clientKvsL: Lens[A, ClientKvs[F]]
 }
 
 object ClientKvs {
-  type Channels[F[_]] = MVar[F, (MVar[F, Request], MVar[F, Response])]
   def initClientKvs[F[_]: Concurrent: ContextShift](host: String, port: Int): F[ClientKvs[F]] = {
     def decodeResponse: Pipe[F, Byte, Response] = StreamDecoder.many(responseCodec).toPipeByte
     def encodeRequest: Pipe[F, Request, Byte]   = StreamEncoder.many(requestCodec).toPipeByte
-    def process(cs: Channels[F])(s: Socket[F]): Stream[F, Unit] = {
+    def process(request: MVar[F, Request], response: MVar[F, Response])(s: Socket[F]): Stream[F, Unit] =
       (Stream.emit(Primer) ++ s.reads(1024).through(decodeResponse))
         .evalMap(
           rp =>
-            Resource.make(cs.take)(cs.put).use {
-              case (rqs, rps) =>
-                for {
-                  _  <- if (rp == Primer) Applicative[F].pure(()) else rps.put(rp)
-                  rq <- rqs.take
-                } yield rq
-            }
+            for {
+              _  <- if (rp == Primer) Applicative[F].pure(()) else response.put(rp)
+              rq <- request.take
+            } yield rq
         )
         .through(encodeRequest)
         .through(s.writes())
         .onFinalize(s.endOfOutput)
-    }
     for {
-      rqs <- MVar.empty[F, Request]
-      rps <- MVar.empty[F, Response]
-      cs  <- MVar.of((rqs, rps))
-      _ <- (Networks.makeSocketGroup >>= Networks
-        .connect(new InetSocketAddress(host, port), process(cs))).compile.drain
-    } yield ClientKvs(cs)
+      request <- MVar.empty[F, Request]
+      response <- MVar.empty[F, Response]
+      _ <- Concurrent[F].start(
+        (Networks.makeSocketGroup >>= Networks
+          .connect(new InetSocketAddress(host, port), process(request, response))).compile.drain
+      )
+    } yield ClientKvs(request, response)
   }
-  implicit def clientKvs[F[_]: Bracket[*[_], Throwable]: FlatMap]: Kvs[F, ClientKvs[F]] =
+  implicit def clientKvs[F[_]: Bracket[*[_], Throwable]: FlatMap](
+      implicit ME: MonadError[F, Throwable]
+  ): Kvs[F, ClientKvs[F]] =
     new Kvs[F, ClientKvs[F]] {
       def insert(x: ClientKvs[F], key: ByteVector, value: ByteVector): F[Unit] =
-        Resource.make(x.channels.take)(x.channels.put).use {
-          case (rqs, rps) =>
-            for {
-              rp <- rps.take
-              _ = assert(rp == NoneSuccess)
-            } yield ()
-        }
+        for {
+          _  <- x.request.put(Insert(key, value))
+          rp <- x.response.take
+          _ <- if (rp == NoneSuccess) ().pure[F]
+          else ME.raiseError(new RuntimeException(s"unexpected response: $rp"))
+        } yield ()
       def query(x: ClientKvs[F], key: ByteVector): F[Option[ByteVector]] =
-        Resource.make(x.channels.take)(x.channels.put).use {
-          case (rqs, rps) =>
-            for {
-              _  <- rqs.put(Query(key))
-              rp <- rps.take
-            } yield rp match {
-              case NoneSuccess    => None
-              case SomeSuccess(v) => Some(v)
-            }
-        }
+        for {
+          _  <- x.request.put(Query(key))
+          rp <- x.response.take
+          r <- rp match {
+            case Primer         => ME.raiseError(new RuntimeException("unexpected response: Primer"))
+            case NoneSuccess    => none.pure[F]
+            case SomeSuccess(v) => v.some.pure[F]
+            case Failure(e)     => ME.raiseError(new RuntimeException(e))
+          }
+        } yield r
       def remove(x: ClientKvs[F], key: ByteVector): F[Unit] =
-        Resource.make(x.channels.take)(x.channels.put).use {
-          case (rqs, rps) =>
-            for {
-              _  <- rqs.put(Remove(key))
-              rp <- rps.take
-              _ = assert(rp == NoneSuccess)
-            } yield ()
-        }
+        for {
+          _  <- x.request.put(Remove(key))
+          rp <- x.response.take
+          _ <- if (rp == NoneSuccess) ().pure[F]
+          else ME.raiseError(new RuntimeException(s"unexpected response: $rp"))
+        } yield ()
     }
   implicit def clientKvsOps[F[_]: Bracket[*[_], Throwable]: FlatMap](
       clientKvs: ClientKvs[F]

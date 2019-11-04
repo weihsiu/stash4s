@@ -13,6 +13,9 @@ object Networks {
       process: Socket[F] => Stream[F, Unit]
   ): SocketGroup => Stream[F, Unit] =
     _.server(address).flatMap(s => Stream.resource(s).map(process)).parJoinUnbounded
-  def connect[F[_]: Concurrent: ContextShift](address: InetSocketAddress, process: Socket[F] => Stream[F, Unit]): SocketGroup => Stream[F, Unit] =
+  def connect[F[_]: Concurrent: ContextShift](
+      address: InetSocketAddress,
+      process: Socket[F] => Stream[F, Unit]
+  ): SocketGroup => Stream[F, Unit] =
     sg => Stream.resource(sg.client(address)).flatMap(process)
 }

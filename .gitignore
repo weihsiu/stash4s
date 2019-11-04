@@ -3,4 +3,4 @@ target/
 .vscode/
 .metals/
 .bloop/
-test.kvs
+data/*.kvs
