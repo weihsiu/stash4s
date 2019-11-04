@@ -18,6 +18,7 @@ object Protocols {
     .| (2) { case Remove(k) => k } (Remove) (nBytesCodec)
 
   sealed trait Response
+  case object Primer extends Response
   case object NoneSuccess extends Response
   case class SomeSuccess(value: ByteVector) extends Response
   case class Failure(error: String) extends Response
