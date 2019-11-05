@@ -17,6 +17,7 @@ import stash.Protocols._
 import stash.util.Networks
 
 case class ClientKvs[F[_]](
+    socket: Deferred[F, Socket[F]],
     request: MVar[F, Request],
     response: MVar[F, Response]
 )
@@ -29,10 +30,10 @@ object ClientKvs {
   def initClientKvs[F[_]: Concurrent: ContextShift](host: String, port: Int): F[ClientKvs[F]] = {
     def decodeResponse: Pipe[F, Byte, Response] = StreamDecoder.many(responseCodec).toPipeByte
     def encodeRequest: Pipe[F, Request, Byte]   = StreamEncoder.many(requestCodec).toPipeByte
-    def process(request: MVar[F, Request], response: MVar[F, Response])(
+    def process(socket: Deferred[F, Socket[F]], request: MVar[F, Request], response: MVar[F, Response])(
         s: Socket[F]
     ): Stream[F, Unit] =
-      (Stream.emit(Primer) ++ s.reads(1024).through(decodeResponse))
+      (Stream.eval_(socket.complete(s)) ++ Stream.emit(Primer) ++ s.reads(1024).through(decodeResponse))
         .evalMap(
           rp =>
             for {
@@ -46,12 +47,14 @@ object ClientKvs {
     for {
       request  <- MVar.empty[F, Request]
       response <- MVar.empty[F, Response]
+      socket <- Deferred[F, Socket[F]]
       _ <- Concurrent[F].start(
         (Networks.makeSocketGroup >>= Networks
-          .connect(new InetSocketAddress(host, port), process(request, response))).compile.drain
+          .connect(new InetSocketAddress(host, port), process(socket, request, response))).compile.drain
       )
-    } yield ClientKvs(request, response)
+    } yield ClientKvs(socket, request, response)
   }
+  def releaseClientKvs[F[_]: Functor](clientKvs: ClientKvs[F]): F[Unit] = clientKvs.socket.get.map(_.close)
   implicit def clientKvs[F[_]: Bracket[*[_], Throwable]: FlatMap](
       implicit ME: MonadError[F, Throwable]
   ): Kvs[F, ClientKvs[F]] =
