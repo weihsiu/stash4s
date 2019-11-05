@@ -5,6 +5,7 @@ import cats.effect._
 import cats.effect.concurrent._
 import cats.implicits._
 import fs2._
+import fs2.concurrent._
 import fs2.io.tcp._
 import java.net.InetSocketAddress
 import monocle._
@@ -15,7 +16,10 @@ import stash.kvs.Kvs._
 import stash.Protocols._
 import stash.util.Networks
 
-case class ClientKvs[F[_]](request: MVar[F, Request], response: MVar[F, Response])
+case class ClientKvs[F[_]](
+    request: MVar[F, Request],
+    response: MVar[F, Response]
+)
 
 trait HasClientKvs[F[_], A] {
   def clientKvsL: Lens[A, ClientKvs[F]]
@@ -25,7 +29,9 @@ object ClientKvs {
   def initClientKvs[F[_]: Concurrent: ContextShift](host: String, port: Int): F[ClientKvs[F]] = {
     def decodeResponse: Pipe[F, Byte, Response] = StreamDecoder.many(responseCodec).toPipeByte
     def encodeRequest: Pipe[F, Request, Byte]   = StreamEncoder.many(requestCodec).toPipeByte
-    def process(request: MVar[F, Request], response: MVar[F, Response])(s: Socket[F]): Stream[F, Unit] =
+    def process(request: MVar[F, Request], response: MVar[F, Response])(
+        s: Socket[F]
+    ): Stream[F, Unit] =
       (Stream.emit(Primer) ++ s.reads(1024).through(decodeResponse))
         .evalMap(
           rp =>
@@ -38,7 +44,7 @@ object ClientKvs {
         .through(s.writes())
         .onFinalize(s.endOfOutput)
     for {
-      request <- MVar.empty[F, Request]
+      request  <- MVar.empty[F, Request]
       response <- MVar.empty[F, Response]
       _ <- Concurrent[F].start(
         (Networks.makeSocketGroup >>= Networks
