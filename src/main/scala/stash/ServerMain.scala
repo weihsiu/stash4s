@@ -25,11 +25,11 @@ object ServerMain extends IOApp {
             env <- Ref.of[IO, ServerApp[IO]](ServerApp(fileKvs))
             r <- env.runAsk { implicit askInstance =>
               val server: KvsServer[RIO[ServerApp[IO], *]] = kvsServer[RIO[ServerApp[IO], *], IO, ServerApp[IO]]
-              askInstance.ask >>= (runServer(server).map(_ => ExitCode.Success).run(_))
+              askInstance.ask >>= (runServer(server).run(_))
             }
           } yield r
         )
-  )
+  ).as(ExitCode.Success)
   def runServer(server: KvsServer[RIO[ServerApp[IO], *]]): RIO[ServerApp[IO], Unit] = {
     server.serve("localhost", 8000)
   }
