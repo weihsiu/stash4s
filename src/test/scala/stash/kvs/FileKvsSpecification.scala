@@ -11,8 +11,7 @@ import org.scalacheck._
 import scala.concurrent.ExecutionContext.global
 import scodec.bits.ByteVector
 import stash.Arbitraries._
-import stash.kvs.Kvs
-import stash.kvs.FileKvs
+import stash.kvs._
 import stash.util.Pool
 
 object FileKvsSpecification extends Properties("FileKvs") {
