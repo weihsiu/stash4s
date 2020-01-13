@@ -1,0 +1,6 @@
+Structure of a functional Scala program: A brief walk-through
+
+This talk will try to show one of the ways to structure a functional Scala program, popularized by the "rio" library in Haskell.
+It turns out to be a rather nice way of organizing a functional Scala program that enables both extensibility and expressiveness.
+This program also uses many popular functional libraries in Scala, namely cats, cats-effect, cats-mtl, fs2, monocle, etc..
+We will see how they are all used together to construct a functional program that's 
